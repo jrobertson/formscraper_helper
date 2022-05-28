@@ -2,7 +2,7 @@
 
 # file: formscraper_helper.rb
 
-require 'ferrum'
+require 'ferrumwizard'
 require 'nokorexi'
 require 'clipboard'
 
@@ -13,14 +13,42 @@ class FormScraperHelper
 
   # note: fd corresponds to FakeDataGenerator22 which is optional
   #
-  def initialize(url, headless: false, clipb: true, fd: nil, debug: false)
+  def initialize(url=nil, browser: nil, headless: false, clipb: true,
+                 fd: nil, debug: false)
 
     @url, @clipb, @fd, @debug = url, clipb, fd, debug
-    @browser = Ferrum::Browser.new  headless: headless
-    @browser.goto(url)
 
-    sleep 2
-    scrape()
+    @browser = browser ? browser : FerrumWizard.new(url,  headless: headless)
+
+  end
+
+  def scrape(body=@browser.body)
+    puts 'body: '  + body.inspect if @debug
+    doc = Nokorexi.new(body).to_doc
+
+    #a = doc.root.xpath('//input|//select')
+    a = doc.root.xpath('//*').select {|x| x.name == 'input' or x.name == 'select'}
+    a.reject! do |x|
+      x.attributes[:type] == 'hidden' or x.attributes[:style] =~ /display:none/
+    end
+
+    @h = a.map do |x|
+
+      key = x.attributes[:name]
+      type = x.name
+
+      h = {}
+      h[:type] = x.attributes[:type] || type
+      h[:xpath] = "//%s[@name=\"%s\"]" % [type, key]
+      h[:title] = x.attributes[:title]
+
+      if type == 'select' then
+        h[:options] = x.xpath('option').map {|x| x.text.to_s}
+      end
+
+      [key, h]
+
+    end.to_h
 
   end
 
@@ -113,7 +141,7 @@ EOF
 
           found = @fd.lookup var1
           val = found.is_a?(String) ? found : 'xxx'
-          s += var1 + ": #{val}\n"
+          s += var1 + ": '#{val}'\n"
         else
           s += var1 + ": xxx\n"
         end
@@ -125,7 +153,7 @@ EOF
         s += s2
         s += "# options: #{h[:options].join(', ')}\n"
         val = h[:options][1..-1].sample
-        s += "#{var1}: #{val}\n"
+        s += "#{var1}: '#{val}'\n"
 
       elsif h[:type] == 'checkbox'
 
@@ -143,7 +171,6 @@ EOF
   private
 
   # returns var1 using arguments rawtitle or key
-  # note: argument s is passed by reference
   #
   def format_var1(rawtitle, key)
 
@@ -169,37 +196,6 @@ EOF
     [var1, s]
 
   end
-
-  def scrape()
-
-    doc = Nokorexi.new(@browser.body).to_doc
-
-    #a = doc.root.xpath('//input|//select')
-    a = doc.root.xpath('//*').select {|x| x.name == 'input' or x.name == 'select'}
-    a.reject! do |x|
-      x.attributes[:type] == 'hidden' or x.attributes[:style] =~ /display:none/
-    end
-
-    @h = a.map do |x|
-
-      key = x.attributes[:name]
-      type = x.name
-
-      h = {}
-      h[:type] = x.attributes[:type] || type
-      h[:xpath] = "//%s[@name=\"%s\"]" % [type, key]
-      h[:title] = x.attributes[:title]
-
-      if type == 'select' then
-        h[:options] = x.xpath('option').map {|x| x.text.to_s}
-      end
-
-      [key, h]
-
-    end.to_h
-
-  end
-
 
 end
 
