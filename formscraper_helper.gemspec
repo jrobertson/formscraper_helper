@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
   s.name = 'formscraper_helper'
-  s.version = '0.1.0'
-  s.summary = 'Attempts to scrape the inputs required to complate a 1 page online form.'
+  s.version = '0.2.0'
+  s.summary = 'Attempts to scrape the inputs required to complete a 1 page online form.'
   s.authors = ['James Robertson']
   s.files = Dir["lib/formscraper_helper.rb"]
   s.add_runtime_dependency('ferrum', '~> 0.11', '>=0.11')
