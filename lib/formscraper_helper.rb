@@ -5,6 +5,7 @@
 require 'ferrumwizard'
 require 'nokorexi'
 require 'clipboard'
+require 'fdg22'
 
 
 class FormScraperHelper
@@ -27,28 +28,44 @@ class FormScraperHelper
     doc = Nokorexi.new(body).to_doc
 
     #a = doc.root.xpath('//input|//select')
-    a = doc.root.xpath('//*').select {|x| x.name == 'input' or x.name == 'select'}
+    a = doc.root.xpath('//*').select do |x|
+      x.name == 'input' or x.name == 'select' or \
+          (x.name == 'button' and x.attributes[:type] == 'submit')
+    end
     a.reject! do |x|
       x.attributes[:type] == 'hidden' or x.attributes[:style] =~ /display:none/
     end
 
-    @h = a.map do |x|
+    a2 = a.map do |x|
 
       key = x.attributes[:name]
-      type = x.name
+      name = x.name
 
       h = {}
-      h[:type] = x.attributes[:type] || type
-      h[:xpath] = "//%s[@name=\"%s\"]" % [type, key]
+      h[:type] = x.attributes[:type] || name
+
+      if key then
+        h[:xpath] = "//%s[@name=\"%s\"]" % [name, key]
+      else
+        h[:xpath] = "//%s[@type=\"%s\"]" % [name, h[:type]]
+      end
+
       h[:title] = x.attributes[:title]
 
-      if type == 'select' then
+      if name == 'select' then
         h[:options] = x.xpath('option').map {|x| x.text.to_s}
       end
 
-      [key, h]
+      [key || h[:type], h]
 
-    end.to_h
+    end
+
+    # ensure submit appears at the end
+    submit = a2.assoc 'submit'
+    a2.delete submit
+    a2 << submit
+
+    @h = a2.to_h
 
   end
 
@@ -63,16 +80,13 @@ require 'yaml'
 require 'ferrum'
 require 'nokorexi'
 
-browser = Ferrum::Browser.new  headless: false
 url = '#{@url}'
-browser.goto(url)
-sleep 2
-
+browser = FerrumWizard.new(url,  headless: false)
 doc = Nokorexi.new(browser.body).to_doc
 
 # load the YAML document containing the inputs
 #filepath = ''
-filepath = '/tmp/tmp.yaml'
+filepath = '/tmp/data.yaml'
 h = YAML.load(File.read(filepath))
 EOF
 
@@ -106,7 +120,16 @@ EOF
         s += "sleep 0.5\n\n"
 
       elsif h[:type] == 'checkbox'
-        s += "r.focus.click\n\n"
+
+        s += "r.focus.click\n"
+        s += "sleep 0.5\n\n"
+
+      elsif h[:type] == 'submit'
+
+        s += "r.focus.click\n"
+        s += "sleep 4\n"
+        s += "browser.save_cookies('/tmp/cookies.yaml')\n"
+
       end
 
     end
@@ -199,3 +222,32 @@ EOF
 
 end
 
+class FormDataTool
+
+  def initialize(fd: nil)
+
+    @fd = fd
+
+
+  end
+
+  def regen(yml='/tmp/data.yaml')
+
+    s = File.read(yml)
+    h = YAML.load(s)
+
+    h2 = h.map do |key, value|
+      v = @fd.lookup key
+      [key, (v || value)]
+    end.to_h
+
+    h2.each do |key, value|
+      puts 'scanning key: ' + key.inspect
+      s.sub!(/#{key}: [^\n]+/, "%s: '%s'" % [key, value])
+    end
+
+    return s
+
+  end
+
+end
